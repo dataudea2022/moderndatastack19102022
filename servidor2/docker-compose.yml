@@ -1,0 +1,300 @@
+# =======================================================================
+# Platform Name            demo-platform
+# Platform Stack:          trivadis/platys-modern-data-platform
+# Platform Stack Version:  1.16.0-preview
+# =======================================================================
+version: '3.5'
+networks:
+  default:
+    name: demo-platform
+# backward compatiblity to platform < 1.14.0
+# Enable PostgreSQL or MySQL for MLflow server
+services:
+  #  ================================== StreamSets DataCollector ========================================== #
+  streamsets-1:
+    image: streamsets/datacollector:3.22.2
+    container_name: streamsets-1
+    hostname: streamsets-1
+    labels:
+      com.platys.name: streamsets
+      com.platys.webui.title: StreamSets Data Collector UI
+      com.platys.webui.url: http://${PUBLIC_IP}:18630
+      com.platys.restapi.title: StreamSets Data Collector REST API
+      com.platys.restapi.url: http://${PUBLIC_IP}:18630/collector/restapi
+    ports:
+      - 18630:18630
+    environment:
+      SDC_OFFSET_DIRECTORY: /data/custom-offset-el
+      SDC_INSTALL_STAGES: streamsets-datacollector-apache-kafka_2_6-lib,streamsets-datacollector-aws-lib,streamsets-datacollector-azure-lib,streamsets-datacollector-groovy_2_4-lib,streamsets-datacollector-jdbc-lib
+      SDC_INSTALL_ENTERPRISE_STAGES: ''
+      SDC_JAVA_OPTS: -Xmx2g -Xms2g -Dlog4j2.formatMsgNoLookups=true
+      SDC_JAVA8_OPTS: -XX:+UseG1GC
+      SDC_CONF_MONITOR_MEMORY: 'true'
+      SDC_CONF_PIPELINE_MAX_RUNNERS_COUNT: 50
+      PLATYS_SDC_ID: 06a0bdfa-4fc6-11ed-ad07-1152f12e3f23
+      SDC_CONF_http_authentication: form
+      SDC_CONF_RUNTIME_CONF_LOCATION: embedded
+    volumes:
+      - ./data-transfer:/data-transfer
+      - ./conf/streamsets/pre-docker-entrypoint.sh:/pre-docker-entrypoint.sh
+      - ./plugins/streamsets/user-libs:/opt/streamsets-datacollector-user-libs:Z
+      - ./plugins/streamsets/libs-extras/streamsets-datacollector-jdbc-lib/:/opt/streamsets-datacollector-3.22.2/streamsets-libs-extras/streamsets-datacollector-jdbc-lib/lib/:Z
+    ulimits:
+      nofile:
+        soft: 32768
+        hard: 32768
+    user: '1000'
+    command:
+      - dc
+      - -exec
+      - -verbose
+    entrypoint:
+      - /pre-docker-entrypoint.sh
+    restart: unless-stopped
+  #  ================================== StreamSets Transformer ========================================== #
+  streamsets-transformer-1:
+    image: streamsets/transformer:3.17.0
+    container_name: streamsets-transformer-1
+    hostname: streamsets-transformer-1
+    labels:
+      com.platys.name: streamsets-transformer
+      com.platys.webui.title: StreamSets Transformer UI
+      com.platys.webui.url: http://${PUBLIC_IP}:19630
+      com.platys.restapi.title: StreamSets Transformer REST API
+      com.platys.restapi.url: http://${PUBLIC_IP}:19630/collector/restapi
+    ports:
+      - 19630:19630
+    volumes:
+      - ./data-transfer:/data-transfer
+      - ./container-volume/streamsets-transformer-1:/data:Z
+#      - ./container-volume/streamsets-transformer/data:/data:Z
+#      - ./streamsets-extras/streamsets-libs-extras/streamsets-datacollector-jdbc-lib/postgresql-42.2.6.jar:/opt/streamsets-datacollector-3.22.2/streamsets-libs-extras/streamsets-datacollector-jdbc-lib/lib/postgresql-42.2.6.jar:Z
+#      - ./streamsets-extras/libs-common-lib:/opt/streamsets-datacollector-3.22.2/libs-common-lib:Z
+#      - ./streamsets-extras/user-libs:/opt/streamsets-datacollector-user-libs:Z
+    restart: unless-stopped
+  #  ================================== StreamSets DataCollector Edge ========================================== #
+  streamsets-edge-1:
+    image: streamsets/datacollector-edge:3.13.0
+    container_name: streamsets-edge-1
+    hostname: streamsets-edge-1
+    labels:
+      com.platys.name: streamsets-edge
+      com.platys.restapi.title: StreamSets Data Collector Edge REST API
+      com.platys.restapi.url: http://${PUBLIC_IP}:18633
+    ports:
+      - 18633:18633
+    volumes:
+      - ./data-transfer:/data-transfer
+    restart: unless-stopped
+  #  ================================== StreamSets DataOps Platform ========================================== #
+  streamsets-dataops-1:
+    image: streamsets/datacollector:4.4.0
+    container_name: streamsets-dataops-1
+    hostname: streamsets-dataops-1
+    labels:
+      com.platys.name: streamsets-dataops
+    environment:
+      STREAMSETS_DEPLOYMENT_SCH_URL: https://na01.hub.streamsets.com
+      STREAMSETS_DEPLOYMENT_ID: ee2bcc4c-a007-42b7-bdca-0b4bafda3def:1104c1af-4c12-11ed-b4a6-4522b7592ded
+      STREAMSETS_DEPLOYMENT_TOKEN: eyJ0eXAiOiJKV1QiLCJhbGciOiJub25lIn0.eyJzIjoiYWZmNDQwYzU3N2YyMTJjOTllMzZkZDhkZTkzNWRhMDBmOTM3OGMyMmE4ZjI1N2Q2NDk2ZDg5NDY0ZWNlYTMxMDcxOWUwNjhmNzI4YjhkOWY5MGJhZTcxMGFlOTI1MDU4N2E5YjVmMjJhZGRhYzlhMjU0OTNkYWU1NjhiYjE0Y2MiLCJ2IjoxLCJpc3MiOiJuYTAxIiwianRpIjoiNGI1NjJlNTYtMWEwNi00NTNmLThhODYtMzBkMTQ4NTZiZWQ5IiwibyI6IjExMDRjMWFmLTRjMTItMTFlZC1iNGE2LTQ1MjJiNzU5MmRlZCJ9
+      SDC_JAVA_OPTS: -Dlog4j2.formatMsgNoLookups=true
+    volumes:
+      - ./data-transfer:/data-transfer
+    ulimits:
+      nofile:
+        soft: 32768
+        hard: 32768
+    restart: unless-stopped
+#  ================================== Airflow ========================================== #
+  airflow:
+    image: bitnami/airflow:2
+    container_name: airflow
+    hostname: airflow
+    labels:
+      com.platys.name: airflow
+      com.platys.webui.title: Airflow UI
+      com.platys.webui.url: http://${PUBLIC_IP}:28139
+      com.platys.restapi.title: Airflow REST API
+      com.platys.restapi.url: http://${PUBLIC_IP}:28139/api/experimental/
+    ports:
+      - 28139:8080
+    environment:
+      - AIRFLOW_DATABASE_NAME=bitnami_airflow
+      - AIRFLOW_DATABASE_USERNAME=bn_airflow
+      - AIRFLOW_DATABASE_PASSWORD=abc123!
+      - AIRFLOW_DATABASE_HOST=airflow-db
+      - AIRFLOW_DATABASE_PORT_NUMBER=5432
+      - REDIS_HOST=airflow-redis
+      - REDIS_PORT_NUMBER=6379
+      - AIRFLOW_EXECUTOR=LocalExecutor
+      - AIRFLOW_FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - AIRFLOW_HOME=/opt/bitnami/airflow
+      - AIRFLOW_LOAD_EXAMPLES=yes
+      - AIRFLOW_PASSWORD=abc123!
+      - AIRFLOW_USERNAME=airflow
+      - PYTHONPATH=/bitnami/python
+    volumes:
+      - ./data-transfer:/data-transfer
+      - ./scripts/airflow/dags:/opt/bitnami/airflow/dags:Z
+      - ./plugins/airflow/:/opt/bitnami/airflow/plugins:Z
+      - ./scripts/airflow/python-requirements:/bitnami/python-requirements:Z
+      - ./scripts/airflow/python:/bitnami/python:Z
+    restart: unless-stopped
+  airflow-scheduler:
+    image: bitnami/airflow-scheduler:2
+    container_name: airflow-scheduler
+    hostname: airflow-scheduler
+    labels:
+      com.platys.name: airflow
+    environment:
+      - AIRFLOW_DATABASE_NAME=bitnami_airflow
+      - AIRFLOW_DATABASE_USERNAME=bn_airflow
+      - AIRFLOW_DATABASE_PASSWORD=abc123!
+      - AIRFLOW_DATABASE_HOST=airflow-db
+      - AIRFLOW_DATABASE_PORT_NUMBER=5432
+      - REDIS_HOST=airflow-redis
+      - REDIS_PORT_NUMBER=6379
+      - AIRFLOW_EXECUTOR=LocalExecutor
+      - AIRFLOW_WEBSERVER_HOST=airflow
+      - AIRFLOW_WEBSERVER_PORT_NUMBER=8080
+      - AIRFLOW_LOAD_EXAMPLES=yes
+      - AIRFLOW_HOME=/opt/bitnami/airflow
+      - AIRFLOW_FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - PYTHONPATH=/bitnami/python
+    volumes:
+      - ./data-transfer:/data-transfer
+      - ./scripts/airflow/dags:/opt/bitnami/airflow/dags:Z
+      - ./plugins/airflow/:/opt/bitnami/airflow/plugins:Z
+      - ./scripts/airflow/python-requirements:/bitnami/python-requirements:Z
+      - ./scripts/airflow/python:/bitnami/python:Z
+    restart: unless-stopped
+  airflow-db:
+    image: bitnami/postgresql:10
+    container_name: airflow-db
+    hostname: airflow-db
+    labels:
+      com.platys.name: airflow
+    environment:
+      - POSTGRESQL_DATABASE=bitnami_airflow
+      - POSTGRESQL_USERNAME=bn_airflow
+      - POSTGRESQL_PASSWORD=abc123!
+      - ALLOW_EMPTY_PASSWORD=yes
+    volumes:
+      - ./data-transfer:/data-transfer
+    restart: unless-stopped
+  #  ================================== Jupyter ========================================== #
+  jupyter:
+    image: jupyter/all-spark-notebook:spark-3.1.1
+    container_name: jupyter
+    hostname: jupyter
+    labels:
+      com.platys.name: jupyter
+      com.platys.webui.title: Jupyter UI
+      com.platys.webui.url: http://${PUBLIC_IP}:28888
+    ports:
+      - 28888:8888
+      - 14040-14044:4040-4044
+    user: root
+    environment:
+      JUPYTER_ENABLE_LAB: "'yes'"
+      GRANT_SUDO: "'yes'"
+      JUPYTER_TOKEN: 1017133566
+      NB_USER: felipe
+      DOCKER_STACKS_JUPYTER_CMD: lab
+    volumes:
+      - ./data-transfer:/data-transfer
+    # - ./custom-conf/jupyter/spark-defaults.conf:/usr/local/spark-3.1.1-bin-hadoop3.2/conf/spark-defaults.conf
+      - ./container-volume/jupyter/work:/home/jovyan/work
+    #  - "./conf/jupyter/spark-defaults.conf:/usr/local/spark-3.1.1-bin-hadoop3.2/conf/spark-defaults.conf"
+    command:
+      # In the command section, $ are replaced with $$ to avoid the error 'Invalid interpolation format for "command" option'
+      - bash
+      - -c
+      - |
+        pip install psycopg2 koalas Optimus optimuspyspark handyspark arcgis mca rpy2 thrift-sasl language-tool-python
+        start-notebook.sh
+    restart: unless-stopped
+  #  ================================== JupyterHub ========================================== #
+  jupyterhub:
+    image: jupyterhub/jupyterhub:3
+    container_name: jupyterhub
+    hostname: jupyterhub
+    labels:
+      com.platys.name: jupyterhub
+      com.platys.webui.title: JupyterHub UI
+      com.platys.webui.url: http://${PUBLIC_IP}:28284
+    ports:
+      - 28284:8000
+    environment:
+      DOCKER_NETWORK_NAME: demo-platform
+      DOCKER_NOTEBOOK_IMAGE: jupyter/minimal-notebook:latest
+      DOCKER_NOTEBOOK_DIR: /home/jovyan/work
+      DOCKER_SPAWN_CMD: start-singleuser.sh
+      POSTGRES_DB: postgresql
+      POSTGRES_HOST: postgres
+      POSTGRES_PASSWORD: abc123!
+      DATA_VOLUME_CONTAINER: /data
+      #GITHUB_CLIENT_ID:
+      #GITHUB_CLIENT_SECRET:
+    volumes:
+      - ./data-transfer:/data-transfer
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - ./conf/jupyterhub/jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py
+      - ./custom-conf/jupyterhub/userlist:/srv/jupyterhub/userlist
+    command:
+      # In the command section, $ are replaced with $$ to avoid the error 'Invalid interpolation format for "command" option'
+      - bash
+      - -c
+      - |
+        pip install dockerspawner
+        pip install psycopg2 koalas Optimus optimuspyspark handyspark arcgis mca rpy2 thrift-sasl language-tool-python
+        jupyterhub -f /srv/jupyterhub/jupyterhub_config.py
+    restart: unless-stopped
+  #  ================================== markdown-viewer ========================================== #
+  markdown-viewer:
+    image: trivadis/markdown-web:latest
+    container_name: markdown-viewer
+    hostname: markdown-viewer
+    labels:
+      com.platys.name: markdown-viewer
+      com.platys.webui.title: Markdown Viewer UI
+      com.platys.webui.url: http://${PUBLIC_IP}:80
+    ports:
+      - 80:80
+    volumes:
+      - ./artefacts:/home/python/markdown
+      - ./data-transfer:/data-transfer
+    restart: unless-stopped
+  markdown-renderer:
+    image: trivadis/jinja2-renderer:latest
+    container_name: markdown-renderer
+    hostname: markdown-renderer
+    labels:
+      com.platys.name: markdown-renderer
+    environment:
+      USE_PUBLIC_IP: 'True'
+      PUBLIC_IP: ${PUBLIC_IP}
+      DOCKER_HOST_IP: ${DOCKER_HOST_IP}
+      DATAPLATFORM_HOME: ${DATAPLATFORM_HOME}
+      PLATYS_PLATFORM_NAME: demo-platform
+      PLATYS_PLATFORM_STACK: trivadis/platys-modern-data-platform
+      PLATYS_PLATFORM_STACK_VERSION: 1.16.0-preview
+      PLATYS_COPY_COOKBOOK_DATA: 'True'
+    volumes:
+      - ./artefacts/templates:/templates
+      - ./artefacts/templates:/scripts
+      - .:/variables
+      - ./artefacts:/output
+      - ./data-transfer:/data-transfer
+  #  ================================== data-provisioning ========================================== #
+  data-provisioning:
+    image: trivadis/platys-modern-data-platform-data:latest
+    container_name: data-provisioning
+    hostname: data-provisioning
+    labels:
+      com.platys.name: data-provisioning
+    volumes:
+      - ./data-transfer:/data-transfer
+volumes:
+  data-transfer-vol:
+    name: data_transfer_vol
