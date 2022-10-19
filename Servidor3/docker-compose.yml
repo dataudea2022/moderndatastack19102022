@@ -1,0 +1,229 @@
+# =======================================================================
+# Platform Name            demo-platform
+# Platform Stack:          trivadis/platys-modern-data-platform
+# Platform Stack Version:  1.16.0-preview
+# =======================================================================
+version: '3.5'
+networks:
+  default:
+    name: demo-platform
+# backward compatiblity to platform < 1.14.0
+# Enable PostgreSQL or MySQL for MLflow server
+services:
+  #  ================================== Apache Spark 2.x ========================================== #
+  spark-master:
+    image: trivadis/apache-spark-master:3.1.3-hadoop3.2
+    container_name: spark-master
+    hostname: spark-master
+    labels:
+      com.platys.name: spark
+      com.platys.webui.title: Spark UI
+      com.platys.webui.url: http://${PUBLIC_IP}:8080
+    ports:
+      - 6066:6066
+      - 7077:7077
+      - 8080:8080
+      - 4040-4044:4040-4044
+    env_file:
+      - ./conf/hadoop.env
+    environment:
+      SPARK_PUBLIC_DNS: ${PUBLIC_IP}
+      INIT_DAEMON_STEP: setup_spark
+      MASTER: spark://spark-master:7077
+      SPARK_DEFAULTS_CONF_spark_jars_repositories:
+      SPARK_DEFAULTS_CONF_spark_jars_packages:
+      SPARK_DEFAULTS_CONF_spark_jars_excludes:
+      SPARK_DEFAULTS_CONF_spark_jars:
+      SPARK_DEFAULTS_CONF_spark_jars_ivySettings:
+      SPARK_DEFAULTS_CONF_spark_sql_catalogImplementation: in-memory
+      CORE_CONF_fs_defaultFS: file:///tmp
+      SPARK_DEFAULTS_CONF_spark_sql_warehouse_dir:
+      SPARK_DEFAULTS_CONF_spark_yarn_dist_files: /spark/conf/hive-site.xml
+      SPARK_DEFAULTS_CONF_spark_driver_extraJavaOptions:
+      SPARK_DEFAULTS_CONF_spark_executor_extraJavaOptions:
+    volumes:
+      - ./data-transfer:/data-transfer
+      - ./plugins/spark/jars:/extra-jars
+      - ./container-volume/spark/logs/:/var/log/spark/logs
+    restart: unless-stopped
+  spark-worker-1:
+    image: trivadis/apache-spark-worker:3.1.3-hadoop3.2
+    container_name: spark-worker-1
+    hostname: spark-worker-1
+    labels:
+      com.platys.name: spark
+    depends_on:
+      - spark-master
+    ports:
+      - 28111:28111
+    env_file:
+      - ./conf/hadoop.env
+    environment:
+      SPARK_MASTER: spark://spark-master:7077
+      SPARK_WORKER_WEBUI_PORT: '28111'
+      SPARK_WORKER_OPTS: -Dspark.worker.cleanup.enabled=true
+      SPARK_PUBLIC_DNS: ${PUBLIC_IP}
+      SPARK_DEFAULTS_CONF_spark_jars_repositories:
+      SPARK_DEFAULTS_CONF_spark_jars_packages:
+      SPARK_DEFAULTS_CONF_spark_jars_excludes:
+      SPARK_DEFAULTS_CONF_spark_jars:
+      SPARK_DEFAULTS_CONF_spark_jars_ivySettings:
+      SPARK_DEFAULTS_CONF_spark_sql_catalogImplementation: in-memory
+      CORE_CONF_fs_defaultFS: file:///tmp
+      SPARK_DEFAULTS_CONF_spark_sql_warehouse_dir: file:///hive/warehouse
+      SPARK_DEFAULTS_CONF_spark_yarn_dist_files: /spark/conf/hive-site.xml
+      SPARK_DEFAULTS_CONF_spark_driver_extraJavaOptions:
+      SPARK_DEFAULTS_CONF_spark_executor_extraJavaOptions:
+    volumes:
+      - ./data-transfer:/data-transfer
+      - ./plugins/spark/jars:/extra-jars
+      - ./container-volume/spark/logs/:/var/log/spark/logs
+    restart: unless-stopped
+  spark-worker-2:
+    image: trivadis/apache-spark-worker:3.1.3-hadoop3.2
+    container_name: spark-worker-2
+    hostname: spark-worker-2
+    labels:
+      com.platys.name: spark
+    depends_on:
+      - spark-master
+    ports:
+      - 28112:28112
+    env_file:
+      - ./conf/hadoop.env
+    environment:
+      SPARK_MASTER: spark://spark-master:7077
+      SPARK_WORKER_WEBUI_PORT: '28112'
+      SPARK_WORKER_OPTS: -Dspark.worker.cleanup.enabled=true
+      SPARK_PUBLIC_DNS: ${PUBLIC_IP}
+      SPARK_DEFAULTS_CONF_spark_jars_repositories:
+      SPARK_DEFAULTS_CONF_spark_jars_packages:
+      SPARK_DEFAULTS_CONF_spark_jars_excludes:
+      SPARK_DEFAULTS_CONF_spark_jars:
+      SPARK_DEFAULTS_CONF_spark_jars_ivySettings:
+      SPARK_DEFAULTS_CONF_spark_sql_catalogImplementation: in-memory
+      CORE_CONF_fs_defaultFS: file:///tmp
+      SPARK_DEFAULTS_CONF_spark_sql_warehouse_dir: file:///hive/warehouse
+      SPARK_DEFAULTS_CONF_spark_yarn_dist_files: /spark/conf/hive-site.xml
+      SPARK_DEFAULTS_CONF_spark_driver_extraJavaOptions:
+      SPARK_DEFAULTS_CONF_spark_executor_extraJavaOptions:
+    volumes:
+      - ./data-transfer:/data-transfer
+      - ./plugins/spark/jars:/extra-jars
+      - ./container-volume/spark/logs/:/var/log/spark/logs
+    restart: unless-stopped
+  #  ================================== Jupyter ========================================== #
+  jupyter:
+    image: jupyter/minimal-notebook:latest
+    container_name: jupyter
+    hostname: jupyter
+    labels:
+      com.platys.name: jupyter
+      com.platys.webui.title: Jupyter UI
+      com.platys.webui.url: http://${PUBLIC_IP}:28889
+    ports:
+      - 28889:8888
+      - 14040-14044:4040-4044
+    user: root
+    environment:
+      JUPYTER_ENABLE_LAB: "'yes'"
+      GRANT_SUDO: "'yes'"
+      JUPYTER_TOKEN: 1017133566
+      NB_USER: felipe
+      DOCKER_STACKS_JUPYTER_CMD: lab
+    volumes:
+      - ./data-transfer:/data-transfer
+    # - ./custom-conf/jupyter/spark-defaults.conf:/usr/local/spark-3.1.1-bin-hadoop3.2/conf/spark-defaults.conf
+      - ./container-volume/jupyter/work:/home/jovyan/work
+    command:
+      # In the command section, $ are replaced with $$ to avoid the error 'Invalid interpolation format for "command" option'
+      - bash
+      - -c
+      - |
+        pip install psycopg2 koalas Optimus optimuspyspark handyspark arcgis mca rpy2 thrift-sasl language-tool-python
+        start-notebook.sh
+    restart: unless-stopped
+  #  ================================== JupyterHub ========================================== #
+  jupyterhub:
+    image: jupyterhub/jupyterhub:3
+    container_name: jupyterhub
+    hostname: jupyterhub
+    labels:
+      com.platys.name: jupyterhub
+      com.platys.webui.title: JupyterHub UI
+      com.platys.webui.url: http://${PUBLIC_IP}:28285
+    ports:
+      - 28285:8000
+    environment:
+      DOCKER_NETWORK_NAME: demo-platform
+      DOCKER_NOTEBOOK_IMAGE: jupyter/minimal-notebook:latest
+      DOCKER_NOTEBOOK_DIR: /home/jovyan/work
+      DOCKER_SPAWN_CMD: start-singleuser.sh
+      POSTGRES_DB: postgresql
+      POSTGRES_HOST: postgres
+      POSTGRES_PASSWORD: abc123!
+      DATA_VOLUME_CONTAINER: /data
+      #GITHUB_CLIENT_ID:
+      #GITHUB_CLIENT_SECRET:
+    volumes:
+      - ./data-transfer:/data-transfer
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - ./conf/jupyterhub/jupyterhub_config.py:/srv/jupyterhub/jupyterhub_config.py
+      - ./custom-conf/jupyterhub/userlist:/srv/jupyterhub/userlist
+    command:
+      # In the command section, $ are replaced with $$ to avoid the error 'Invalid interpolation format for "command" option'
+      - bash
+      - -c
+      - |
+        pip install dockerspawner
+        pip install psycopg2 koalas Optimus optimuspyspark handyspark arcgis mca rpy2 thrift-sasl language-tool-python
+        jupyterhub -f /srv/jupyterhub/jupyterhub_config.py
+    restart: unless-stopped
+  #  ================================== markdown-viewer ========================================== #
+  markdown-viewer:
+    image: trivadis/markdown-web:latest
+    container_name: markdown-viewer
+    hostname: markdown-viewer
+    labels:
+      com.platys.name: markdown-viewer
+      com.platys.webui.title: Markdown Viewer UI
+      com.platys.webui.url: http://${PUBLIC_IP}:80
+    ports:
+      - 80:80
+    volumes:
+      - ./artefacts:/home/python/markdown
+      - ./data-transfer:/data-transfer
+    restart: unless-stopped
+  markdown-renderer:
+    image: trivadis/jinja2-renderer:latest
+    container_name: markdown-renderer
+    hostname: markdown-renderer
+    labels:
+      com.platys.name: markdown-renderer
+    environment:
+      USE_PUBLIC_IP: 'True'
+      PUBLIC_IP: ${PUBLIC_IP}
+      DOCKER_HOST_IP: ${DOCKER_HOST_IP}
+      DATAPLATFORM_HOME: ${DATAPLATFORM_HOME}
+      PLATYS_PLATFORM_NAME: demo-platform
+      PLATYS_PLATFORM_STACK: trivadis/platys-modern-data-platform
+      PLATYS_PLATFORM_STACK_VERSION: 1.16.0-preview
+      PLATYS_COPY_COOKBOOK_DATA: 'True'
+    volumes:
+      - ./artefacts/templates:/templates
+      - ./artefacts/templates:/scripts
+      - .:/variables
+      - ./artefacts:/output
+      - ./data-transfer:/data-transfer
+  #  ================================== data-provisioning ========================================== #
+  data-provisioning:
+    image: trivadis/platys-modern-data-platform-data:latest
+    container_name: data-provisioning
+    hostname: data-provisioning
+    labels:
+      com.platys.name: data-provisioning
+    volumes:
+      - ./data-transfer:/data-transfer
+volumes:
+  data-transfer-vol:
+    name: data_transfer_vol
